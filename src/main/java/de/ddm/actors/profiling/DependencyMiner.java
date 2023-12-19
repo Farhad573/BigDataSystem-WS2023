@@ -20,6 +20,7 @@ import lombok.NoArgsConstructor;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Random;
 
@@ -61,6 +62,7 @@ public class DependencyMiner extends AbstractBehavior<DependencyMiner.Message> {
 	public static class RegistrationMessage implements Message {
 		private static final long serialVersionUID = -4025238529984914107L;
 		ActorRef<DependencyWorker.Message> dependencyWorker;
+		ActorRef<LargeMessageProxy.Message> dependencyWorkerLargeMessageProxy;
 	}
 
 	@Getter
@@ -69,7 +71,21 @@ public class DependencyMiner extends AbstractBehavior<DependencyMiner.Message> {
 	public static class CompletionMessage implements Message {
 		private static final long serialVersionUID = -7642425159675583598L;
 		ActorRef<DependencyWorker.Message> dependencyWorker;
-		int result;
+		int taskID;
+		Column column1;
+		Column column2;
+		boolean foundIND;
+	}
+	@Getter
+	@NoArgsConstructor
+	@AllArgsConstructor
+	public static class getRequiredColumnMessage implements Message {
+		private static final long serialVersionUID = -5025238529984914107L;
+		ActorRef<DependencyWorker.Message> dependencyWorker;
+		int taskId;
+		String key1;
+		String key2;
+		boolean areBothColumnsMissing;
 	}
 
 	////////////////////////
@@ -95,7 +111,7 @@ public class DependencyMiner extends AbstractBehavior<DependencyMiner.Message> {
 			this.inputReaders.add(context.spawn(InputReader.create(id, this.inputFiles[id]), InputReader.DEFAULT_NAME + "_" + id));
 		this.resultCollector = context.spawn(ResultCollector.create(), ResultCollector.DEFAULT_NAME);
 		this.largeMessageProxy = this.getContext().spawn(LargeMessageProxy.create(this.getContext().getSelf().unsafeUpcast()), LargeMessageProxy.DEFAULT_NAME);
-
+		this.dependencyWorkersLargeMessageProxy = new ArrayList<>();
 		this.dependencyWorkers = new ArrayList<>();
 
 		context.getSystem().receptionist().tell(Receptionist.register(dependencyMinerService, context.getSelf()));
@@ -116,6 +132,12 @@ public class DependencyMiner extends AbstractBehavior<DependencyMiner.Message> {
 	private final ActorRef<LargeMessageProxy.Message> largeMessageProxy;
 
 	private final List<ActorRef<DependencyWorker.Message>> dependencyWorkers;
+	private HashMap<String,Column> columnHashMap = new HashMap<>();
+
+	private List<DependencyWorker.TaskMessage> taskMessageList = new ArrayList<>();
+	private  List<ActorRef<LargeMessageProxy.Message>> dependencyWorkersLargeMessageProxy;
+	private int taskCounter = 0;
+	private int fileCounter;
 
 	////////////////////
 	// Actor Behavior //
@@ -128,9 +150,24 @@ public class DependencyMiner extends AbstractBehavior<DependencyMiner.Message> {
 				.onMessage(BatchMessage.class, this::handle)
 				.onMessage(HeaderMessage.class, this::handle)
 				.onMessage(RegistrationMessage.class, this::handle)
+				.onMessage(getRequiredColumnMessage.class,this::handle)
 				.onMessage(CompletionMessage.class, this::handle)
 				.onSignal(Terminated.class, this::handle)
 				.build();
+	}
+	private Behavior<Message> handle(getRequiredColumnMessage message) {
+		if(message.areBothColumnsMissing){
+			this.getContext().getLog().info("I got RequiredColumnMessage from a worker which both columns are missing");
+			message.getDependencyWorker().tell(new DependencyWorker.ReceivedColumnMessage
+					(message.getTaskId(),this.columnHashMap.get(message.key1), message.getKey1(),
+							this.columnHashMap.get(message.getKey2()), message.getKey2(),true));
+		}else {
+			this.getContext().getLog().info("I got RequiredColumnMessage from a worker which one column is missing");
+			message.getDependencyWorker().tell(new DependencyWorker.ReceivedColumnMessage
+					(message.getTaskId(),this.columnHashMap.get(message.key1), message.getKey1(),
+							null, null,true));
+		}
+		return this;
 	}
 
 	private Behavior<Message> handle(StartMessage message) {
@@ -149,10 +186,30 @@ public class DependencyMiner extends AbstractBehavior<DependencyMiner.Message> {
 
 	private Behavior<Message> handle(BatchMessage message) {
 		// Ignoring batch content for now ... but I could do so much with it.
+		this.getContext().getLog().info("Received batch of {} rows for file {}!", message.getBatch().size(), this.inputFiles[message.getId()].getName());
+		List<String[]> rows = message.getBatch();
 
-		if (message.getBatch().size() != 0)
+		if(!rows.isEmpty()){
+			int numberOfColumns = rows.get(0).length;
+			for (int columnNumber = 0; columnNumber < numberOfColumns; columnNumber++){
+				for (String[] row : rows){
+					putInHashMapOfColumns(message,columnNumber,row);
+				}
+			}
 			this.inputReaders.get(message.getId()).tell(new InputReader.ReadBatchMessage(this.getContext().getSelf()));
+		}else {
+			this.getContext().getLog().info("Reading file {} is finished", this.inputFiles[message.getId()].getName());
+			fileCounter--;
+			if (fileCounter == 0) {
+				this.getContext().getLog().info("All files have been read");
+				startChecking();
+			}
+		}
+
 		return this;
+//		if (message.getBatch().size() != 0)
+//			this.inputReaders.get(message.getId()).tell(new InputReader.ReadBatchMessage(this.getContext().getSelf()));
+//		return this;
 	}
 
 	private Behavior<Message> handle(RegistrationMessage message) {
@@ -160,10 +217,11 @@ public class DependencyMiner extends AbstractBehavior<DependencyMiner.Message> {
 		if (!this.dependencyWorkers.contains(dependencyWorker)) {
 			this.dependencyWorkers.add(dependencyWorker);
 			this.getContext().watch(dependencyWorker);
+			this.dependencyWorkersLargeMessageProxy.add(message.getDependencyWorkerLargeMessageProxy());
 			// The worker should get some work ... let me send her something before I figure out what I actually want from her.
 			// I probably need to idle the worker for a while, if I do not have work for it right now ... (see master/worker pattern)
 
-			dependencyWorker.tell(new DependencyWorker.TaskMessage(this.largeMessageProxy, 42));
+			//dependencyWorker.tell(new DependencyWorker.TaskMessage(this.largeMessageProxy, 42));
 		}
 		return this;
 	}
@@ -173,13 +231,13 @@ public class DependencyMiner extends AbstractBehavior<DependencyMiner.Message> {
 		// If this was a reasonable result, I would probably do something with it and potentially generate more work ... for now, let's just generate a random, binary IND.
 
 		if (this.headerLines[0] != null) {
-			Random random = new Random();
-			int dependent = random.nextInt(this.inputFiles.length);
-			int referenced = random.nextInt(this.inputFiles.length);
-			File dependentFile = this.inputFiles[dependent];
-			File referencedFile = this.inputFiles[referenced];
-			String[] dependentAttributes = {this.headerLines[dependent][random.nextInt(this.headerLines[dependent].length)], this.headerLines[dependent][random.nextInt(this.headerLines[dependent].length)]};
-			String[] referencedAttributes = {this.headerLines[referenced][random.nextInt(this.headerLines[referenced].length)], this.headerLines[referenced][random.nextInt(this.headerLines[referenced].length)]};
+//			Random random = new Random();
+//			int dependent = random.nextInt(this.inputFiles.length);
+//			int referenced = random.nextInt(this.inputFiles.length);
+			File dependentFile = new File(message.getColumn2().getNameOfFile());
+			File referencedFile = new File(message.getColumn1().getNameOfFile());
+			String[] dependentAttributes = new String[]{message.getColumn2().getColumnName()};
+			String[] referencedAttributes = new String[]{message.getColumn1().getColumnName()};
 			InclusionDependency ind = new InclusionDependency(dependentFile, dependentAttributes, referencedFile, referencedAttributes);
 			List<InclusionDependency> inds = new ArrayList<>(1);
 			inds.add(ind);
@@ -189,12 +247,57 @@ public class DependencyMiner extends AbstractBehavior<DependencyMiner.Message> {
 		// I still don't know what task the worker could help me to solve ... but let me keep her busy.
 		// Once I found all unary INDs, I could check if this.discoverNaryDependencies is set to true and try to detect n-ary INDs as well!
 
-		dependencyWorker.tell(new DependencyWorker.TaskMessage(this.largeMessageProxy, 42));
-
+		//dependencyWorker.tell(new DependencyWorker.TaskMessage(this.largeMessageProxy, 42));
+		sendTasksToDependencyWorker(dependencyWorker);
 		// At some point, I am done with the discovery. That is when I should call my end method. Because I do not work on a completable task yet, I simply call it after some time.
-		if (System.currentTimeMillis() - this.startTime > 2000000)
-			this.end();
+//		if (System.currentTimeMillis() - this.startTime > 2000000)
+//			this.end();
 		return this;
+	}
+	private void startChecking(){
+		this.getContext().getLog().info("Lets start checking");
+		for (String key1 : columnHashMap.keySet()){
+			for (String key2 : columnHashMap.keySet()){
+				if(! key1.equals(key2)){
+					DependencyWorker.TaskMessage task = new DependencyWorker.TaskMessage(this.largeMessageProxy,-1,key1,key2);
+					taskMessageList.add(task);
+				}
+			}
+		}
+		for (ActorRef<DependencyWorker.Message> dependencyWorker : this.dependencyWorkers) {
+			sendTasksToDependencyWorker(dependencyWorker);
+		}
+	}
+
+	private void sendTasksToDependencyWorker(ActorRef<DependencyWorker.Message> dependencyWorker){
+		this.getContext().getLog().info("number of remaining Tasks is {}: ." , taskMessageList.size() - taskCounter);
+		this.getContext().getLog().info("Sending task to a worker");
+		if(checkRemainingTasks()){
+			this.getContext().getLog().info("Still tasks remaining to be done");
+			DependencyWorker.TaskMessage taskMessage = this.taskMessageList.get(taskCounter);
+			taskMessage.setDependencyMinerLargeMessageProxy(this.largeMessageProxy);
+			this.largeMessageProxy.tell(new LargeMessageProxy.SendMessage(taskMessage,this.dependencyWorkersLargeMessageProxy.get(this.dependencyWorkers.indexOf(dependencyWorker))));
+			taskCounter++;
+		}else {
+			this.getContext().getLog().info("All tasks are given to Workers");
+			this.end();
+		}
+	}
+
+	private boolean checkRemainingTasks(){
+		if(taskCounter < taskMessageList.size()){
+			return true;
+		}else
+			return false;
+	}
+
+	private void putInHashMapOfColumns(BatchMessage message, int columnNumber, String[] row){
+		if(columnHashMap.containsKey(this.headerLines[message.getId()][columnNumber])){
+			columnHashMap.get(this.headerLines[message.getId()][columnNumber]).addValueToColumn(row[columnNumber]);
+		}else {
+			columnHashMap.put(this.headerLines[message.getId()][columnNumber],new Column(columnNumber,this.headerLines[message.getId()][columnNumber],this.inputFiles[message.getId()].getName()));
+			columnHashMap.get(this.headerLines[message.getId()][columnNumber]).addValueToColumn(row[columnNumber]);
+		}
 	}
 
 	private void end() {
