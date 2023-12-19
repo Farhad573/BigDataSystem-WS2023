@@ -114,27 +114,68 @@ public class DependencyWorker extends AbstractBehavior<DependencyWorker.Message>
 		findInclusionDependency();
 		return this;
 	}
+	private void findInclusionDependency(){
+		Column column1 = columnHashMap.get(taskMessage.getKey1());
+		Column column2 = columnHashMap.get(taskMessage.getKey2());
+		this.getContext().getLog().info("Checking IND in {} and {} ",column1.getColumnName(),column2.getColumnName());
+		Boolean result = column1.getValues().containsAll(column2.getValues());
+		if(result){
+			this.getContext().getLog().info("found IND between {} and {} ",column1.getColumnName(),column2.getColumnName());
+		}else {
+			this.getContext().getLog().info("found NO IND between {} and {} ",column1.getColumnName(),column2.getColumnName());
+		}
+		LargeMessageProxy.LargeMessage completionMessage = new DependencyMiner.CompletionMessage(this.getContext().getSelf(), taskMessage.getTask(),column1,column2,result);
+		this.largeMessageProxy.tell(new LargeMessageProxy.SendMessage(completionMessage,taskMessage.getDependencyMinerLargeMessageProxy()));
+	}
 
 	private Behavior<Message> handle(ReceptionistListingMessage message) {
 		Set<ActorRef<DependencyMiner.Message>> dependencyMiners = message.getListing().getServiceInstances(DependencyMiner.dependencyMinerService);
 		for (ActorRef<DependencyMiner.Message> dependencyMiner : dependencyMiners)
-			dependencyMiner.tell(new DependencyMiner.RegistrationMessage(this.getContext().getSelf()));
+			dependencyMiner.tell(new DependencyMiner.RegistrationMessage(this.getContext().getSelf(),this.largeMessageProxy));
 		return this;
 	}
 
 	private Behavior<Message> handle(TaskMessage message) {
-		this.getContext().getLog().info("Working!");
-		// I should probably know how to solve this task, but for now I just pretend some work...
+		this.getContext().getLog().info("got a tastMessage");
+		this.taskMessage = message;
+		key1 = message.key1;
+		key2 = message.key2;
+		this.getContext().getLog().info("getting the Keys which are {} and {}. " , key1,key2);
+		if(! columnHashMap.containsKey(key1) && ! columnHashMap.containsKey(key2)){
+			this.getContext().getLog().info(" I am a worker and need two columns");
+			LargeMessageProxy.LargeMessage requestMessage = new DependencyMiner.getRequiredColumnMessage(
+					this.getContext().getSelf(), message.getTask(), message.getKey1(), message.getKey2(), true
+			);
+			this.largeMessageProxy.tell(new LargeMessageProxy.SendMessage(requestMessage,message.getDependencyMinerLargeMessageProxy()));
+		} else if (!columnHashMap.containsKey(key1)) {
+			this.getContext().getLog().info(" I am a worker and need first column");
+			LargeMessageProxy.LargeMessage requestMessage = new DependencyMiner.getRequiredColumnMessage(
+					this.getContext().getSelf(), message.getTask(), message.getKey1(), null, false
+			);
+			this.largeMessageProxy.tell(new LargeMessageProxy.SendMessage(requestMessage,message.getDependencyMinerLargeMessageProxy()));
 
-		int result = message.getTask();
-		long time = System.currentTimeMillis();
-		Random rand = new Random();
-		int runtime = (rand.nextInt(2) + 2) * 1000;
-		while (System.currentTimeMillis() - time < runtime)
-			result = ((int) Math.abs(Math.sqrt(result)) * result) % 1334525;
+		} else if (!columnHashMap.containsKey(key2)) {
+			this.getContext().getLog().info(" I am a worker and need second column");
+			LargeMessageProxy.LargeMessage requestMessage = new DependencyMiner.getRequiredColumnMessage(
+					this.getContext().getSelf(), message.getTask(), message.getKey2(), null, false
+			);
+			this.largeMessageProxy.tell(new LargeMessageProxy.SendMessage(requestMessage,message.getDependencyMinerLargeMessageProxy()));
+		}else {
+			findInclusionDependency();
+		}
 
-		LargeMessageProxy.LargeMessage completionMessage = new DependencyMiner.CompletionMessage(this.getContext().getSelf(), result);
-		this.largeMessageProxy.tell(new LargeMessageProxy.SendMessage(completionMessage, message.getDependencyMinerLargeMessageProxy()));
+//		this.getContext().getLog().info("Working!");
+//		// I should probably know how to solve this task, but for now I just pretend some work...
+//
+//		int result = message.getTask();
+//		long time = System.currentTimeMillis();
+//		Random rand = new Random();
+//		int runtime = (rand.nextInt(2) + 2) * 1000;
+//		while (System.currentTimeMillis() - time < runtime)
+//			result = ((int) Math.abs(Math.sqrt(result)) * result) % 1334525;
+//
+//		LargeMessageProxy.LargeMessage completionMessage = new DependencyMiner.CompletionMessage(this.getContext().getSelf(), result);
+//		this.largeMessageProxy.tell(new LargeMessageProxy.SendMessage(completionMessage, message.getDependencyMinerLargeMessageProxy()));
 
 		return this;
 	}
