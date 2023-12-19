@@ -12,7 +12,9 @@ import de.ddm.serialization.AkkaSerializable;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 
+import java.util.HashMap;
 import java.util.Random;
 import java.util.Set;
 
@@ -34,12 +36,28 @@ public class DependencyWorker extends AbstractBehavior<DependencyWorker.Message>
 	}
 
 	@Getter
+	@Setter
 	@NoArgsConstructor
 	@AllArgsConstructor
-	public static class TaskMessage implements Message {
+	public static class TaskMessage implements Message,LargeMessageProxy.LargeMessage {
 		private static final long serialVersionUID = -4667745204456518160L;
 		ActorRef<LargeMessageProxy.Message> dependencyMinerLargeMessageProxy;
 		int task;
+		String key1;
+		String key2;
+	}
+
+	@Getter
+	@NoArgsConstructor
+	@AllArgsConstructor
+	public static class ReceivedColumnMessage implements Message, LargeMessageProxy.LargeMessage {
+		private static final long serialVersionUID = -5667745204456518160L;
+		int taskId;
+		Column column1;
+		String key1;
+		Column column2;
+		String key2;
+		boolean areBothColumnsAreMissing;
 	}
 
 	////////////////////////
@@ -66,6 +84,10 @@ public class DependencyWorker extends AbstractBehavior<DependencyWorker.Message>
 	/////////////////
 
 	private final ActorRef<LargeMessageProxy.Message> largeMessageProxy;
+	private HashMap<String,Column> columnHashMap = new HashMap<>();
+	private TaskMessage taskMessage;
+	private String key1;
+	private String key2;
 
 	////////////////////
 	// Actor Behavior //
@@ -76,7 +98,21 @@ public class DependencyWorker extends AbstractBehavior<DependencyWorker.Message>
 		return newReceiveBuilder()
 				.onMessage(ReceptionistListingMessage.class, this::handle)
 				.onMessage(TaskMessage.class, this::handle)
+				.onMessage(ReceivedColumnMessage.class,this::handle)
 				.build();
+	}
+	private Behavior<Message> handle(ReceivedColumnMessage message){
+		this.getContext().getLog().info("I am a Worker and got a ReceivedColumnMessage");
+		if(message.areBothColumnsAreMissing){
+			this.getContext().getLog().info("I am a Worker and got a ReceivedColumnMessage which two Columns are missing");
+			this.columnHashMap.put(message.getKey1(),message.getColumn1());
+			this.columnHashMap.put(message.key2,message.getColumn2());
+		}else {
+			this.getContext().getLog().info("I am a Worker and got a ReceivedColumnMessage which one Column is missing");
+			this.columnHashMap.put(message.getKey1(),message.getColumn1());
+		}
+		findInclusionDependency();
+		return this;
 	}
 
 	private Behavior<Message> handle(ReceptionistListingMessage message) {
