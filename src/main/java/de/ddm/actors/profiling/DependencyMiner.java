@@ -113,6 +113,7 @@ public class DependencyMiner extends AbstractBehavior<DependencyMiner.Message> {
 		this.largeMessageProxy = this.getContext().spawn(LargeMessageProxy.create(this.getContext().getSelf().unsafeUpcast()), LargeMessageProxy.DEFAULT_NAME);
 		this.dependencyWorkersLargeMessageProxy = new ArrayList<>();
 		this.dependencyWorkers = new ArrayList<>();
+		this.fileCounter = inputFiles.length;
 
 		context.getSystem().receptionist().tell(Receptionist.register(dependencyMinerService, context.getSelf()));
 	}
