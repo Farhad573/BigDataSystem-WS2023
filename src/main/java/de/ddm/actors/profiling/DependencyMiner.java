@@ -272,7 +272,7 @@ public class DependencyMiner extends AbstractBehavior<DependencyMiner.Message> {
 		for (String key1 : columnHashMap.keySet()){
 			for (String key2 : columnHashMap.keySet()){
 				if(! key1.equals(key2)){
-					DependencyWorker.TaskMessage task = new DependencyWorker.TaskMessage(this.largeMessageProxy,-1,key1,key2);
+					DependencyWorker.TaskMessage task = new DependencyWorker.TaskMessage(this.largeMessageProxy,-1,columnHashMap.get(key1),columnHashMap.get(key2));
 					taskMessageList.add(task);
 				}
 			}
