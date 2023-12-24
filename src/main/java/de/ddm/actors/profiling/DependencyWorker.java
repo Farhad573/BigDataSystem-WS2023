@@ -50,7 +50,7 @@ public class DependencyWorker extends AbstractBehavior<DependencyWorker.Message>
 	@Getter
 	@NoArgsConstructor
 	@AllArgsConstructor
-	public static class ReceivedColumnMessage implements Message, LargeMessageProxy.LargeMessage {
+	public static class ReceivedColumnMessage implements Message,LargeMessageProxy.LargeMessage {
 		private static final long serialVersionUID = -5667745204456518160L;
 		int taskId;
 		Column column1;
@@ -143,20 +143,20 @@ public class DependencyWorker extends AbstractBehavior<DependencyWorker.Message>
 		this.getContext().getLog().info("getting the Keys which are {} and {}. " , key1,key2);
 		if(! columnHashMap.containsKey(key1) && ! columnHashMap.containsKey(key2)){
 			this.getContext().getLog().info(" I am a worker and need two columns");
-			LargeMessageProxy.LargeMessage requestMessage = new DependencyMiner.getRequiredColumnMessage(
+			LargeMessageProxy.LargeMessage requestMessage = new DependencyMiner.getRequiredColumnMessage(this.largeMessageProxy,
 					this.getContext().getSelf(), message.getTask(), message.getKey1(), message.getKey2(), true
 			);
 			this.largeMessageProxy.tell(new LargeMessageProxy.SendMessage(requestMessage,message.getDependencyMinerLargeMessageProxy()));
 		} else if (!columnHashMap.containsKey(key1)) {
 			this.getContext().getLog().info(" I am a worker and need first column");
-			LargeMessageProxy.LargeMessage requestMessage = new DependencyMiner.getRequiredColumnMessage(
+			LargeMessageProxy.LargeMessage requestMessage = new DependencyMiner.getRequiredColumnMessage(this.largeMessageProxy,
 					this.getContext().getSelf(), message.getTask(), message.getKey1(), null, false
 			);
 			this.largeMessageProxy.tell(new LargeMessageProxy.SendMessage(requestMessage,message.getDependencyMinerLargeMessageProxy()));
 
 		} else if (!columnHashMap.containsKey(key2)) {
 			this.getContext().getLog().info(" I am a worker and need second column");
-			LargeMessageProxy.LargeMessage requestMessage = new DependencyMiner.getRequiredColumnMessage(
+			LargeMessageProxy.LargeMessage requestMessage = new DependencyMiner.getRequiredColumnMessage(this.largeMessageProxy,
 					this.getContext().getSelf(), message.getTask(), message.getKey2(), null, false
 			);
 			this.largeMessageProxy.tell(new LargeMessageProxy.SendMessage(requestMessage,message.getDependencyMinerLargeMessageProxy()));

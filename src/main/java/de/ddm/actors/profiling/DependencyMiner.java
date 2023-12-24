@@ -80,7 +80,8 @@ public class DependencyMiner extends AbstractBehavior<DependencyMiner.Message> {
 	@NoArgsConstructor
 	@AllArgsConstructor
 	public static class getRequiredColumnMessage implements Message {
-		private static final long serialVersionUID = -5025238529984914107L;
+		ActorRef<LargeMessageProxy.Message> dependencyWorkerLargeMessageProxy;
+		private static final long serialVersionUID = -1025238529984914107L;
 		ActorRef<DependencyWorker.Message> dependencyWorker;
 		int taskId;
 		String key1;
@@ -159,14 +160,25 @@ public class DependencyMiner extends AbstractBehavior<DependencyMiner.Message> {
 	private Behavior<Message> handle(getRequiredColumnMessage message) {
 		if(message.areBothColumnsMissing){
 			this.getContext().getLog().info("I got RequiredColumnMessage from a worker which both columns are missing");
-			message.getDependencyWorker().tell(new DependencyWorker.ReceivedColumnMessage
-					(message.getTaskId(),this.columnHashMap.get(message.key1), message.getKey1(),
-							this.columnHashMap.get(message.getKey2()), message.getKey2(),true));
+//			message.getDependencyWorker().tell(new DependencyWorker.ReceivedColumnMessage
+//					(message.getTaskId(),this.columnHashMap.get(message.key1), message.getKey1(),
+//							this.columnHashMap.get(message.getKey2()), message.getKey2(),true));
+			this.getContext().getLog().info("Debug1");
+			LargeMessageProxy.LargeMessage mess = new DependencyWorker.ReceivedColumnMessage(message.getTaskId(),this.columnHashMap.get(message.key1), message.getKey1(),
+							this.columnHashMap.get(message.getKey2()), message.getKey2(),true);
+			this.largeMessageProxy.tell(new LargeMessageProxy.SendMessage(mess,message.dependencyWorkerLargeMessageProxy));
+			this.getContext().getLog().info("Debug2");
+
 		}else {
 			this.getContext().getLog().info("I got RequiredColumnMessage from a worker which one column is missing");
-			message.getDependencyWorker().tell(new DependencyWorker.ReceivedColumnMessage
-					(message.getTaskId(),this.columnHashMap.get(message.key1), message.getKey1(),
-							null, null,true));
+//			message.getDependencyWorker().tell(new DependencyWorker.ReceivedColumnMessage
+//					(message.getTaskId(),this.columnHashMap.get(message.key1), message.getKey1(),
+//							null, null,true));
+			this.getContext().getLog().info("Debug1");
+			LargeMessageProxy.LargeMessage mess = new DependencyWorker.ReceivedColumnMessage(message.getTaskId(),this.columnHashMap.get(message.key1), message.getKey1(),
+					null, null,true);
+			this.largeMessageProxy.tell(new LargeMessageProxy.SendMessage(mess,message.dependencyWorkerLargeMessageProxy));
+			this.getContext().getLog().info("Debug2");
 		}
 		return this;
 	}

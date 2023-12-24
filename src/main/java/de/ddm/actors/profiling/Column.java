@@ -1,8 +1,12 @@
 package de.ddm.actors.profiling;
 
+import de.ddm.serialization.AkkaSerializable;
+
+import java.io.Serializable;
 import java.util.HashSet;
 
-public class Column {
+public class Column implements AkkaSerializable {
+    private static final long serialVersionUID = -8025238529984914107L;
     private int id;
     private HashSet<String> values;
     private String columnName;
