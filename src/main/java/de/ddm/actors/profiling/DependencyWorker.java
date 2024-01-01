@@ -13,9 +13,6 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-
-import java.util.HashMap;
-import java.util.Random;
 import java.util.Set;
 
 public class DependencyWorker extends AbstractBehavior<DependencyWorker.Message> {
@@ -43,23 +40,8 @@ public class DependencyWorker extends AbstractBehavior<DependencyWorker.Message>
 		private static final long serialVersionUID = -4667745204456518160L;
 		ActorRef<LargeMessageProxy.Message> dependencyMinerLargeMessageProxy;
 		int task;
-//		String key1;
-//		String key2;
 		Column column1;
 		Column column2;
-	}
-
-	@Getter
-	@NoArgsConstructor
-	@AllArgsConstructor
-	public static class ReceivedColumnMessage implements Message,LargeMessageProxy.LargeMessage {
-		private static final long serialVersionUID = -5667745204456518160L;
-		int taskId;
-		Column column1;
-		String key1;
-		Column column2;
-		String key2;
-		boolean areBothColumnsAreMissing;
 	}
 
 	////////////////////////
@@ -86,10 +68,6 @@ public class DependencyWorker extends AbstractBehavior<DependencyWorker.Message>
 	/////////////////
 
 	private final ActorRef<LargeMessageProxy.Message> largeMessageProxy;
-	private HashMap<String,Column> columnHashMap = new HashMap<>();
-	private TaskMessage taskMessage;
-	private String key1;
-	private String key2;
 
 	////////////////////
 	// Actor Behavior //
@@ -100,21 +78,7 @@ public class DependencyWorker extends AbstractBehavior<DependencyWorker.Message>
 		return newReceiveBuilder()
 				.onMessage(ReceptionistListingMessage.class, this::handle)
 				.onMessage(TaskMessage.class, this::handle)
-				.onMessage(ReceivedColumnMessage.class,this::handle)
 				.build();
-	}
-	private Behavior<Message> handle(ReceivedColumnMessage message){
-		this.getContext().getLog().info("I am a Worker and got a ReceivedColumnMessage");
-		if(message.areBothColumnsAreMissing){
-			this.getContext().getLog().info("I am a Worker and got a ReceivedColumnMessage which two Columns are missing");
-			this.columnHashMap.put(message.getKey1(),message.getColumn1());
-			this.columnHashMap.put(message.key2,message.getColumn2());
-		}else {
-			this.getContext().getLog().info("I am a Worker and got a ReceivedColumnMessage which one Column is missing");
-			this.columnHashMap.put(message.getKey1(),message.getColumn1());
-		}
-		//findInclusionDependency();
-		return this;
 	}
 	private void findInclusionDependency(TaskMessage message){
 		Column column1 = message.getColumn1();
@@ -139,46 +103,7 @@ public class DependencyWorker extends AbstractBehavior<DependencyWorker.Message>
 
 	private Behavior<Message> handle(TaskMessage message) {
 		this.getContext().getLog().info("got a tastMessage");
-		//this.taskMessage = message;
-//		key1 = message.key1;
-//		key2 = message.key2;
-//		this.getContext().getLog().info("getting the Keys which are {} and {}. " , key1,key2);
-//		if(! columnHashMap.containsKey(key1) && ! columnHashMap.containsKey(key2)){
-//			this.getContext().getLog().info(" I am a worker and need two columns");
-//			LargeMessageProxy.LargeMessage requestMessage = new DependencyMiner.getRequiredColumnMessage(this.largeMessageProxy,
-//					this.getContext().getSelf(), message.getTask(), message.getKey1(), message.getKey2(), true
-//			);
-//			this.largeMessageProxy.tell(new LargeMessageProxy.SendMessage(requestMessage,message.getDependencyMinerLargeMessageProxy()));
-//		} else if (!columnHashMap.containsKey(key1)) {
-//			this.getContext().getLog().info(" I am a worker and need first column");
-//			LargeMessageProxy.LargeMessage requestMessage = new DependencyMiner.getRequiredColumnMessage(this.largeMessageProxy,
-//					this.getContext().getSelf(), message.getTask(), message.getKey1(), null, false
-//			);
-//			this.largeMessageProxy.tell(new LargeMessageProxy.SendMessage(requestMessage,message.getDependencyMinerLargeMessageProxy()));
-//
-//		} else if (!columnHashMap.containsKey(key2)) {
-//			this.getContext().getLog().info(" I am a worker and need second column");
-//			LargeMessageProxy.LargeMessage requestMessage = new DependencyMiner.getRequiredColumnMessage(this.largeMessageProxy,
-//					this.getContext().getSelf(), message.getTask(), message.getKey2(), null, false
-//			);
-//			this.largeMessageProxy.tell(new LargeMessageProxy.SendMessage(requestMessage,message.getDependencyMinerLargeMessageProxy()));
-//		}else {
 			findInclusionDependency(message);
-//		}
-
-//		this.getContext().getLog().info("Working!");
-//		// I should probably know how to solve this task, but for now I just pretend some work...
-//
-//		int result = message.getTask();
-//		long time = System.currentTimeMillis();
-//		Random rand = new Random();
-//		int runtime = (rand.nextInt(2) + 2) * 1000;
-//		while (System.currentTimeMillis() - time < runtime)
-//			result = ((int) Math.abs(Math.sqrt(result)) * result) % 1334525;
-//
-//		LargeMessageProxy.LargeMessage completionMessage = new DependencyMiner.CompletionMessage(this.getContext().getSelf(), result);
-//		this.largeMessageProxy.tell(new LargeMessageProxy.SendMessage(completionMessage, message.getDependencyMinerLargeMessageProxy()));
-
 		return this;
 	}
 }

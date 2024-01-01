@@ -76,18 +76,6 @@ public class DependencyMiner extends AbstractBehavior<DependencyMiner.Message> {
 		Column column2;
 		boolean foundIND;
 	}
-	@Getter
-	@NoArgsConstructor
-	@AllArgsConstructor
-	public static class getRequiredColumnMessage implements Message {
-		ActorRef<LargeMessageProxy.Message> dependencyWorkerLargeMessageProxy;
-		private static final long serialVersionUID = -1025238529984914107L;
-		ActorRef<DependencyWorker.Message> dependencyWorker;
-		int taskId;
-		String key1;
-		String key2;
-		boolean areBothColumnsMissing;
-	}
 
 	////////////////////////
 	// Actor Construction //
@@ -135,7 +123,6 @@ public class DependencyMiner extends AbstractBehavior<DependencyMiner.Message> {
 
 	private final List<ActorRef<DependencyWorker.Message>> dependencyWorkers;
 	private HashMap<String,Column> columnHashMap = new HashMap<>();
-
 	private List<DependencyWorker.TaskMessage> taskMessageList = new ArrayList<>();
 	private  List<ActorRef<LargeMessageProxy.Message>> dependencyWorkersLargeMessageProxy;
 	private int taskCounter = 0;
@@ -152,35 +139,9 @@ public class DependencyMiner extends AbstractBehavior<DependencyMiner.Message> {
 				.onMessage(BatchMessage.class, this::handle)
 				.onMessage(HeaderMessage.class, this::handle)
 				.onMessage(RegistrationMessage.class, this::handle)
-				.onMessage(getRequiredColumnMessage.class,this::handle)
 				.onMessage(CompletionMessage.class, this::handle)
 				.onSignal(Terminated.class, this::handle)
 				.build();
-	}
-	private Behavior<Message> handle(getRequiredColumnMessage message) {
-		if(message.areBothColumnsMissing){
-			this.getContext().getLog().info("I got RequiredColumnMessage from a worker which both columns are missing");
-//			message.getDependencyWorker().tell(new DependencyWorker.ReceivedColumnMessage
-//					(message.getTaskId(),this.columnHashMap.get(message.key1), message.getKey1(),
-//							this.columnHashMap.get(message.getKey2()), message.getKey2(),true));
-			this.getContext().getLog().info("Debug1");
-			LargeMessageProxy.LargeMessage mess = new DependencyWorker.ReceivedColumnMessage(message.getTaskId(),this.columnHashMap.get(message.key1), message.getKey1(),
-							this.columnHashMap.get(message.getKey2()), message.getKey2(),true);
-			this.largeMessageProxy.tell(new LargeMessageProxy.SendMessage(mess,message.dependencyWorkerLargeMessageProxy));
-			this.getContext().getLog().info("Debug2");
-
-		}else {
-			this.getContext().getLog().info("I got RequiredColumnMessage from a worker which one column is missing");
-//			message.getDependencyWorker().tell(new DependencyWorker.ReceivedColumnMessage
-//					(message.getTaskId(),this.columnHashMap.get(message.key1), message.getKey1(),
-//							null, null,true));
-			this.getContext().getLog().info("Debug1");
-			LargeMessageProxy.LargeMessage mess = new DependencyWorker.ReceivedColumnMessage(message.getTaskId(),this.columnHashMap.get(message.key1), message.getKey1(),
-					null, null,true);
-			this.largeMessageProxy.tell(new LargeMessageProxy.SendMessage(mess,message.dependencyWorkerLargeMessageProxy));
-			this.getContext().getLog().info("Debug2");
-		}
-		return this;
 	}
 
 	private Behavior<Message> handle(StartMessage message) {
@@ -198,7 +159,6 @@ public class DependencyMiner extends AbstractBehavior<DependencyMiner.Message> {
 	}
 
 	private Behavior<Message> handle(BatchMessage message) {
-		// Ignoring batch content for now ... but I could do so much with it.
 		this.getContext().getLog().info("Received batch of {} rows for file {}!", message.getBatch().size(), this.inputFiles[message.getId()].getName());
 		List<String[]> rows = message.getBatch();
 
@@ -218,11 +178,7 @@ public class DependencyMiner extends AbstractBehavior<DependencyMiner.Message> {
 				startChecking();
 			}
 		}
-
 		return this;
-//		if (message.getBatch().size() != 0)
-//			this.inputReaders.get(message.getId()).tell(new InputReader.ReadBatchMessage(this.getContext().getSelf()));
-//		return this;
 	}
 
 	private Behavior<Message> handle(RegistrationMessage message) {
@@ -231,22 +187,13 @@ public class DependencyMiner extends AbstractBehavior<DependencyMiner.Message> {
 			this.dependencyWorkers.add(dependencyWorker);
 			this.getContext().watch(dependencyWorker);
 			this.dependencyWorkersLargeMessageProxy.add(message.getDependencyWorkerLargeMessageProxy());
-			// The worker should get some work ... let me send her something before I figure out what I actually want from her.
-			// I probably need to idle the worker for a while, if I do not have work for it right now ... (see master/worker pattern)
-
-			//dependencyWorker.tell(new DependencyWorker.TaskMessage(this.largeMessageProxy, 42));
 		}
 		return this;
 	}
 
 	private Behavior<Message> handle(CompletionMessage message) {
 		ActorRef<DependencyWorker.Message> dependencyWorker = message.getDependencyWorker();
-		// If this was a reasonable result, I would probably do something with it and potentially generate more work ... for now, let's just generate a random, binary IND.
-
 		if (message.isFoundIND()) {
-//			Random random = new Random();
-//			int dependent = random.nextInt(this.inputFiles.length);
-//			int referenced = random.nextInt(this.inputFiles.length);
 			File dependentFile = new File(message.getColumn2().getNameOfFile());
 			File referencedFile = new File(message.getColumn1().getNameOfFile());
 			String[] dependentAttributes = new String[]{message.getColumn2().getColumnName()};
@@ -257,14 +204,7 @@ public class DependencyMiner extends AbstractBehavior<DependencyMiner.Message> {
 
 			this.resultCollector.tell(new ResultCollector.ResultMessage(inds));
 		}
-		// I still don't know what task the worker could help me to solve ... but let me keep her busy.
-		// Once I found all unary INDs, I could check if this.discoverNaryDependencies is set to true and try to detect n-ary INDs as well!
-
-		//dependencyWorker.tell(new DependencyWorker.TaskMessage(this.largeMessageProxy, 42));
 		sendTasksToDependencyWorker(dependencyWorker);
-		// At some point, I am done with the discovery. That is when I should call my end method. Because I do not work on a completable task yet, I simply call it after some time.
-//		if (System.currentTimeMillis() - this.startTime > 2000000)
-//			this.end();
 		return this;
 	}
 	private void startChecking(){
@@ -281,7 +221,6 @@ public class DependencyMiner extends AbstractBehavior<DependencyMiner.Message> {
 			sendTasksToDependencyWorker(dependencyWorker);
 		}
 	}
-
 	private void sendTasksToDependencyWorker(ActorRef<DependencyWorker.Message> dependencyWorker){
 		this.getContext().getLog().info("number of remaining Tasks is {}: ." , taskMessageList.size() - taskCounter);
 		this.getContext().getLog().info("Sending task to a worker");
@@ -296,14 +235,12 @@ public class DependencyMiner extends AbstractBehavior<DependencyMiner.Message> {
 			this.end();
 		}
 	}
-
 	private boolean checkRemainingTasks(){
 		if(taskCounter < taskMessageList.size()){
 			return true;
 		}else
 			return false;
 	}
-
 	private void putInHashMapOfColumns(BatchMessage message, int columnNumber, String[] row){
 		if(columnHashMap.containsKey(this.headerLines[message.getId()][columnNumber])){
 			columnHashMap.get(this.headerLines[message.getId()][columnNumber]).addValueToColumn(row[columnNumber]);
