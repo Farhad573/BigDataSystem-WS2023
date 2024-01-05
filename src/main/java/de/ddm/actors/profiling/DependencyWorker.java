@@ -31,7 +31,9 @@ public class DependencyWorker extends AbstractBehavior<DependencyWorker.Message>
 		private static final long serialVersionUID = -5246338806092216222L;
 		Receptionist.Listing listing;
 	}
-
+	/**
+	 * It is a Message which DependencyMiner sends to worker which contains two columns to be compared for IND
+	 */
 	@Getter
 	@Setter
 	@NoArgsConstructor
@@ -80,6 +82,10 @@ public class DependencyWorker extends AbstractBehavior<DependencyWorker.Message>
 				.onMessage(TaskMessage.class, this::handle)
 				.build();
 	}
+	/**
+	 * @param message is a task Message
+	 *  this Method is called in TaskMessage handle method and compares the two columns and sends back a completionMessage to Miner
+	 */
 	private void findInclusionDependency(TaskMessage message){
 		Column column1 = message.getColumn1();
 		Column column2 = message.getColumn2();
@@ -97,6 +103,7 @@ public class DependencyWorker extends AbstractBehavior<DependencyWorker.Message>
 	private Behavior<Message> handle(ReceptionistListingMessage message) {
 		Set<ActorRef<DependencyMiner.Message>> dependencyMiners = message.getListing().getServiceInstances(DependencyMiner.dependencyMinerService);
 		for (ActorRef<DependencyMiner.Message> dependencyMiner : dependencyMiners)
+			// here we save this Message to Miner so that the Miner store this worker's LargeMessageProxy
 			dependencyMiner.tell(new DependencyMiner.RegistrationMessage(this.getContext().getSelf(),this.largeMessageProxy));
 		return this;
 	}
